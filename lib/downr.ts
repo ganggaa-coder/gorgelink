@@ -4,19 +4,9 @@ import http from "http";
 
 const BASE = "https://downr.org";
 const ANALYTICS = `${BASE}/.netlify/functions/analytics`;
-const DOWNLOAD = `${BASE}/.netlify/functions/download`;
-const NYT = `${BASE}/.netlify/functions/nyt`;
+const BBC = `${BASE}/.netlify/functions/bbc`;
 
-// 1. Connection pooling for high concurrency
-const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 200, maxFreeSockets: 50, timeout: 60000 });
-const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 200, maxFreeSockets: 50, timeout: 60000 });
-
-const apiClient = axios.create({
-  httpAgent,
-  httpsAgent,
-});
-
-// 2. User-Agent Rotation
+// 1. User-Agent Rotation
 const UAs = [
   "Mozilla/5.0 (Linux; Android 15; SM-F958 Build/AP3A.240905.015) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.86 Mobile Safari/537.36",
   "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Mobile Safari/537.36",
@@ -30,15 +20,14 @@ function getRandomUA() {
   return UAs[Math.floor(Math.random() * UAs.length)];
 }
 
-// 3. In-memory caching for redundant URL requests
+// 2. In-memory caching for redundant URL requests
 interface CacheEntry {
   data: any;
   expiresAt: number;
 }
 const cache = new Map<string, CacheEntry>();
-const CACHE_TTL_MS = 1000 * 60 * 10; // 10 minutes cache per URL to survive viral storms
+const CACHE_TTL_MS = 1000 * 60 * 10; // 10 minutes
 
-// Cleanup old cache entries periodically
 setInterval(() => {
   const now = Date.now();
   for (const [key, value] of cache.entries()) {
@@ -46,7 +35,7 @@ setInterval(() => {
       cache.delete(key);
     }
   }
-}, 1000 * 60 * 5); // every 5 minutes
+}, 1000 * 60 * 5);
 
 function parseCookie(setCookie: string[] = []) {
   return setCookie.map(v => v.split(";")[0]).join("; ");
@@ -104,11 +93,16 @@ const getHeaders = (cookie = "") => {
 async function getCookie(retries = 2) {
   for (let i = 0; i < retries; i++) {
     try {
-      const res = await apiClient.get(ANALYTICS, {
-        timeout: 10000,
-        headers: getHeaders()
+      const res = await fetch(ANALYTICS, {
+        method: "GET",
+        headers: getHeaders(),
+        signal: AbortSignal.timeout(10000)
       });
-      return parseCookie((res.headers as any)["set-cookie"] || []);
+      
+      const setCookie = typeof res.headers.getSetCookie === 'function' 
+        ? res.headers.getSetCookie() 
+        : [];
+      return parseCookie(setCookie);
     } catch (e) {
       if (i === retries - 1) return "";
     }
@@ -118,22 +112,23 @@ async function getCookie(retries = 2) {
 
 async function postEndpoint(endpoint: string, url: string, cookie = "") {
   try {
-    const res = await apiClient.post(endpoint, { url }, {
-      timeout: 30000,
-      validateStatus: () => true,
-      responseType: "text",
-      transformResponse: [v => v],
-      headers: getHeaders(cookie)
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: getHeaders(cookie),
+      body: JSON.stringify({ url }),
+      signal: AbortSignal.timeout(30000)
     });
+    
+    const text = await res.text();
     return {
       endpoint,
       status: res.status,
-      data: parseData(res.data)
+      data: parseData(text)
     };
   } catch (err: any) {
     return {
       endpoint,
-      status: err.response?.status || 500,
+      status: err.name === 'TimeoutError' ? 408 : 500,
       data: null
     };
   }
@@ -141,21 +136,18 @@ async function postEndpoint(endpoint: string, url: string, cookie = "") {
 
 async function tryDownload(url: string) {
   let cookie = await getCookie();
-  let result = await postEndpoint(DOWNLOAD, url, cookie);
-
+  
+  // Percobaan pertama ke endpoint bbc
+  let result = await postEndpoint(BBC, url, cookie);
   if (isOk(result.status, result.data)) return result;
 
+  // Jika gagal (misal 403), ambil cookie baru dan coba lagi (sesuai pola di Network tab)
   cookie = await getCookie();
-  result = await postEndpoint(DOWNLOAD, url, cookie);
+  result = await postEndpoint(BBC, url, cookie);
 
-  if (isOk(result.status, result.data)) return result;
-
-  result = await postEndpoint(NYT, url, cookie);
   return result;
 }
 
-// 4. Global promise maps so we don't fetch the exact same URL concurrently
-// This prevents overwhelming the server if many people ask for the same video simultaneously
 const pendingRequests = new Map<string, Promise<any>>();
 
 export async function downr(url: string) {
@@ -164,7 +156,6 @@ export async function downr(url: string) {
       throw new Error("Invalid url.");
     }
 
-    // Checking Cache First
     if (cache.has(url)) {
       const cached = cache.get(url)!;
       if (Date.now() < cached.expiresAt) {
@@ -174,7 +165,6 @@ export async function downr(url: string) {
       }
     }
 
-    // Coalesce duplicate pending requests (Dog-pile prevention)
     if (pendingRequests.has(url)) {
       return await pendingRequests.get(url);
     }
@@ -193,7 +183,6 @@ export async function downr(url: string) {
       };
 
       if (ok) {
-         // Save to cache on success
          cache.set(url, {
            data: finalOutput,
            expiresAt: Date.now() + CACHE_TTL_MS
@@ -211,7 +200,7 @@ export async function downr(url: string) {
     pendingRequests.delete(url);
     return {
       Status: false,
-      Code: err.response?.status || 500,
+      Code: 500,
       Input: url || null,
       Endpoint: null,
       Result: null,
