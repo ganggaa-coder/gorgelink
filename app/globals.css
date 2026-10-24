@@ -1,8 +1,52 @@
 @import "tailwindcss";
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color-scheme: light;
+  --bg-canvas: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-surface-subtle: #f1f5f9;
+  --border-subtle: #e2e8f0;
+  --text-primary: #0f172a;
+  --text-secondary: #64748b;
+  --text-muted: #94a3b8;
+}
+
+:root.dark {
+  color-scheme: dark;
+  --bg-canvas: #0b0f19;
+  --bg-surface: #131b2e;
+  --bg-surface-subtle: #0f172a;
+  --border-subtle: #1e293b;
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+}
+
+body {
+  background-color: var(--bg-canvas);
+  color: var(--text-primary);
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.theme-canvas {
+  background-color: var(--bg-canvas);
+}
+
+.theme-surface {
+  background-color: var(--bg-surface);
+  border-color: var(--border-subtle);
+}
+
+.theme-surface-subtle {
+  background-color: var(--bg-surface-subtle);
+}
+
+.theme-border {
+  border-color: var(--border-subtle);
 }
 
 .font-mono-numbers {
