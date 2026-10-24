@@ -1,210 +1,48 @@
-import axios from "axios";
-import https from "https";
-import http from "http";
+class VidsSave {
+  baseUrl: string;
+  auth: string;
+  domain: string;
 
-const BASE = "https://downr.org";
-const ANALYTICS = `${BASE}/.netlify/functions/analytics`;
-const BBC = `${BASE}/.netlify/functions/bbc`;
-
-// 1. User-Agent Rotation
-const UAs = [
-  "Mozilla/5.0 (Linux; Android 15; SM-F958 Build/AP3A.240905.015) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.6723.86 Mobile Safari/537.36",
-  "Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Mobile Safari/537.36",
-  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-  "Mozilla/5.0 (Linux; Android 13; Pixel 7 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36"
-];
-
-function getRandomUA() {
-  return UAs[Math.floor(Math.random() * UAs.length)];
-}
-
-// 2. In-memory caching for redundant URL requests
-interface CacheEntry {
-  data: any;
-  expiresAt: number;
-}
-const cache = new Map<string, CacheEntry>();
-const CACHE_TTL_MS = 1000 * 60 * 10; // 10 minutes
-
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, value] of cache.entries()) {
-    if (now > value.expiresAt) {
-      cache.delete(key);
-    }
+  constructor() {
+    this.baseUrl = "https://api.vidssave.com/api/contentsite_api";
+    this.auth = "20250901majwlqo";
+    this.domain = "api-ak.vidssave.com";
   }
-}, 1000 * 60 * 5);
 
-function parseCookie(setCookie: string[] = []) {
-  return setCookie.map(v => v.split(";")[0]).join("; ");
-}
+  async download(url: string) {
+    if (!url) throw new Error("URL is required");
 
-function parseData(data: any) {
-  if (typeof data !== "string") return data;
-  const text = data.trim();
-  try {
-    return JSON.parse(text);
-  } catch {
-    return text;
-  }
-}
+    const payload = new URLSearchParams({
+      auth: this.auth,
+      domain: this.domain,
+      origin: "source",
+      link: url
+    });
 
-function isOk(status: number, data: any) {
-  const isObject = data && typeof data === "object";
-  if (status < 200 || status >= 300) return false;
-  if (data === null || data === undefined) return false;
-  if (data === "") return false;
-  if (data === "error") return false;
-  if (data === "failed") return false;
-  if (data === "user_retry_required") return false;
-  if (isObject && data.error === true) return false;
-  if (isObject && data.status === false) return false;
-  if (isObject && data.success === false) return false;
-  return true;
-}
-
-function getError(data: any, status: number) {
-  if (typeof data === "string") return data || `HTTP ${status}`;
-  if (data && typeof data === "object") return data.message || data.error || data.status || data.reason || `HTTP ${status}`;
-  return `HTTP ${status}`;
-}
-
-const getHeaders = (cookie = "") => {
-  return {
-    accept: "*/*",
-    "accept-encoding": "gzip, deflate, br",
-    "accept-language": "en-US,en;q=0.9",
-    "content-type": "application/json",
-    cookie,
-    origin: BASE,
-    referer: `${BASE}/`,
-    "sec-ch-ua": '"Chromium";v="130", "Not?A_Brand";v="99"',
-    "sec-ch-ua-mobile": "?1",
-    "sec-ch-ua-platform": '"Android"',
-    "sec-fetch-dest": "empty",
-    "sec-fetch-mode": "cors",
-    "sec-fetch-site": "same-origin",
-    "user-agent": getRandomUA()
-  };
-};
-
-async function getCookie(retries = 2) {
-  for (let i = 0; i < retries; i++) {
-    try {
-      const res = await fetch(ANALYTICS, {
-        method: "GET",
-        headers: getHeaders(),
-        signal: AbortSignal.timeout(10000)
-      });
-      
-      const setCookie = typeof res.headers.getSetCookie === 'function' 
-        ? res.headers.getSetCookie() 
-        : [];
-      return parseCookie(setCookie);
-    } catch (e) {
-      if (i === retries - 1) return "";
-    }
-  }
-  return "";
-}
-
-async function postEndpoint(endpoint: string, url: string, cookie = "") {
-  try {
-    const res = await fetch(endpoint, {
+    const res = await fetch(`${this.baseUrl}/media/parse`, {
       method: "POST",
-      headers: getHeaders(cookie),
-      body: JSON.stringify({ url }),
+      headers: {
+        accept: "*/*",
+        "accept-language": "id-ID",
+        "cache-control": "no-cache",
+        "content-type": "application/x-www-form-urlencoded",
+        origin: "https://vidssave.com",
+        pragma: "no-cache",
+        referer: "https://vidssave.com/",
+        "user-agent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Mobile Safari/537.36"
+      },
+      body: payload.toString(),
       signal: AbortSignal.timeout(30000)
     });
-    
-    const text = await res.text();
-    return {
-      endpoint,
-      status: res.status,
-      data: parseData(text)
-    };
-  } catch (err: any) {
-    return {
-      endpoint,
-      status: err.name === 'TimeoutError' ? 408 : 500,
-      data: null
-    };
+
+    if (!res.ok) {
+        throw new Error(`HTTP Error: ${res.status}`);
+    }
+
+    const data = await res.json();
+    return data?.data || data;
   }
 }
 
-async function tryDownload(url: string) {
-  let cookie = await getCookie();
-  
-  // Percobaan pertama ke endpoint bbc
-  let result = await postEndpoint(BBC, url, cookie);
-  if (isOk(result.status, result.data)) return result;
-
-  // Jika gagal (misal 403), ambil cookie baru dan coba lagi (sesuai pola di Network tab)
-  cookie = await getCookie();
-  result = await postEndpoint(BBC, url, cookie);
-
-  return result;
-}
-
-const pendingRequests = new Map<string, Promise<any>>();
-
-export async function downr(url: string) {
-  try {
-    if (!url || !/^https?:\/\//i.test(url)) {
-      throw new Error("Invalid url.");
-    }
-
-    if (cache.has(url)) {
-      const cached = cache.get(url)!;
-      if (Date.now() < cached.expiresAt) {
-        return cached.data;
-      } else {
-        cache.delete(url);
-      }
-    }
-
-    if (pendingRequests.has(url)) {
-      return await pendingRequests.get(url);
-    }
-
-    const requestPromise = (async () => {
-      const result = await tryDownload(url);
-      const ok = isOk(result.status, result.data);
-
-      const finalOutput = {
-        Status: ok,
-        Code: result.status,
-        Input: url,
-        Endpoint: result.endpoint,
-        Result: ok ? result.data : null,
-        Error: ok ? null : getError(result.data, result.status)
-      };
-
-      if (ok) {
-         cache.set(url, {
-           data: finalOutput,
-           expiresAt: Date.now() + CACHE_TTL_MS
-         });
-      }
-
-      return finalOutput;
-    })();
-
-    pendingRequests.set(url, requestPromise);
-    const data = await requestPromise;
-    pendingRequests.delete(url);
-    return data;
-  } catch (err: any) {
-    pendingRequests.delete(url);
-    return {
-      Status: false,
-      Code: 500,
-      Input: url || null,
-      Endpoint: null,
-      Result: null,
-      Error: err.message
-    };
-  }
-}
+// Ekspor instance agar bisa digunakan di tempat lain
+export const api = new VidsSave();
