@@ -26,6 +26,7 @@ import {
   Radio,
   Activity,
 } from 'lucide-react';
+import Image from 'next/image';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePWAInstall } from '../hooks/usePWAInstall';
 
@@ -398,7 +399,7 @@ export default function App() {
         >
           <div className="w-9 h-9 rounded-xl overflow-hidden border border-[var(--border-subtle)] shadow-xs shrink-0 bg-[var(--bg-canvas)] transition-transform group-hover:scale-105">
             <img
-              src="/assets/icon.png"
+              src="/icon.png"
               alt="GorgeLink Mascot"
               className="w-full h-full object-cover"
             />
@@ -497,7 +498,7 @@ export default function App() {
         <section className="w-full rounded-2xl overflow-hidden border border-[var(--border-subtle)] shadow-xs relative bg-[var(--bg-surface)]">
           <div className="w-full aspect-[21/9] sm:aspect-[16/7] relative overflow-hidden bg-[var(--bg-canvas)]">
             <img
-              src="/assets/banner.png"
+              src="/banner.png"
               alt="GorgeLink Anime Mascot Banner"
               className="w-full h-full object-cover object-center"
             />
@@ -672,7 +673,7 @@ export default function App() {
                 {/* Central Glow Core with Mascot Icon */}
                 <div className="absolute w-14 h-14 rounded-full overflow-hidden border-2 border-[var(--accent-primary)] bg-[var(--bg-canvas)] shadow-[0_0_20px_rgba(56,189,248,0.35)] flex items-center justify-center">
                   <img
-                    src="/assets/icon.png"
+                    src="/icon.png"
                     alt="GorgeLink"
                     className="w-full h-full object-cover"
                   />
@@ -1046,7 +1047,7 @@ export default function App() {
           <div className="flex items-center gap-2.5">
             <div className="w-6 h-6 rounded-lg overflow-hidden border border-[var(--border-subtle)] shadow-2xs shrink-0">
               <img
-                src="/assets/icon.png"
+                src="/icon.png"
                 alt="GorgeLink Chibi"
                 className="w-full h-full object-cover"
               />
@@ -1114,7 +1115,7 @@ export default function App() {
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-12 h-12 rounded-xl overflow-hidden border border-[var(--border-subtle)] shadow-xs shrink-0">
                   <img
-                    src="/assets/icon.png"
+                    src="/icon.png"
                     alt="GorgeLink Icon"
                     className="w-full h-full object-cover"
                   />
