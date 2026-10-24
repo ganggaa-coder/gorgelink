@@ -396,6 +396,63 @@ async function parseTwitter(rawUrl: string): Promise<ExtractionResult | null> {
   return null;
 }
 
+// Cobalt Tools API Parser (Untuk Instagram, Facebook, Reddit, Pinterest, dll)
+async function parseCobaltTools(rawUrl: string): Promise<ExtractionResult | null> {
+  try {
+    const res = await fetch('https://api.cobalt.tools/api/json', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+      },
+      body: JSON.stringify({ url: rawUrl }),
+      signal: AbortSignal.timeout(12000),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const medias: MediaItem[] = [];
+
+      if (data.status === 'stream' || data.status === 'redirect' || data.url) {
+        medias.push({
+          label: 'Direct Download Media',
+          url: data.url,
+          type: (data.url.includes('.mp4') || data.url.includes('.webm')) ? 'video' : 'other',
+          extension: data.url.includes('.mp4') ? 'mp4' : 'auto'
+        });
+      } else if (data.status === 'picker' && Array.isArray(data.picker)) {
+        data.picker.forEach((item: any, idx: number) => {
+          medias.push({
+            label: `Gallery Media ${idx + 1}`,
+            url: item.url,
+            type: item.type === 'video' ? 'video' : 'image',
+            extension: item.type === 'video' ? 'mp4' : 'jpg'
+          });
+        });
+      }
+
+      if (medias.length > 0) {
+        let platform = 'Other';
+        if (rawUrl.includes('instagram.com')) platform = 'Instagram';
+        else if (rawUrl.includes('facebook.com') || rawUrl.includes('fb.watch')) platform = 'Facebook';
+        else if (rawUrl.includes('reddit.com')) platform = 'Reddit';
+        else if (rawUrl.includes('pinterest.com')) platform = 'Pinterest';
+
+        return {
+          title: data.text || `${platform} Media Post`,
+          url: medias[0].url,
+          medias,
+          platform
+        };
+      }
+    }
+  } catch (e) {
+    console.warn('Cobalt tools parser error:', e);
+  }
+  return null;
+}
+
 // Universal Multi-Platform Engine
 export class MediaEngine {
   async download(url: string): Promise<ExtractionResult> {
@@ -486,8 +543,16 @@ export class MediaEngine {
       }
     }
 
-    // 5. Multi-Source Resolver (Instagram, Facebook, Threads, SoundCloud, etc.)
-    // We try multi-origin requests with retry
+    // 5. Instagram / Facebook / Reddit Engine (Cobalt) - Diutamakan sebelum multi-source yg sering error
+    if (lower.includes('instagram.com') || lower.includes('facebook.com') || lower.includes('fb.watch') || lower.includes('reddit.com')) {
+      const cobaltResult = await parseCobaltTools(cleanUrl);
+      if (cobaltResult) {
+        setCache(cleanUrl, cobaltResult);
+        return cobaltResult;
+      }
+    }
+
+    // 6. Generic Multi-Source Resolver (Vidssave)
     try {
       const payload = new URLSearchParams({
         auth: '4c9b7d21',
@@ -508,19 +573,44 @@ export class MediaEngine {
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36',
         },
         body: payload.toString(),
-        signal: AbortSignal.timeout(15000),
+        signal: AbortSignal.timeout(10000),
       });
 
       if (res.ok) {
         const data = await res.json();
         if (data && (data.data || (data.status !== 0 && data.status_code !== 'analyze_risk' && data.status_code !== 'analyze_failed'))) {
           const resultData = data.data || data;
-          setCache(cleanUrl, resultData);
-          return resultData;
+          
+          let parsedMedias: MediaItem[] = [];
+          if (Array.isArray(resultData.medias)) {
+            parsedMedias = resultData.medias;
+          } else if (resultData.url || resultData.play) {
+            parsedMedias.push({ label: 'Media', url: resultData.url || resultData.play, type: 'other' });
+          }
+
+          if (parsedMedias.length > 0) {
+            const mappedResult: ExtractionResult = {
+              title: resultData.title || 'Media Content',
+              cover: resultData.thumbnail || resultData.cover,
+              duration: resultData.duration,
+              medias: parsedMedias,
+              url: parsedMedias[0].url,
+              platform: 'Multi-Source',
+            };
+            setCache(cleanUrl, mappedResult);
+            return mappedResult;
+          }
         }
       }
     } catch (e) {
       console.warn('Fallback multi-source parser error:', e);
+    }
+
+    // 7. Last Resort Fallback (Cobalt untuk segala jenis link yang tidak masuk ke if di atas)
+    const finalCobalt = await parseCobaltTools(cleanUrl);
+    if (finalCobalt) {
+      setCache(cleanUrl, finalCobalt);
+      return finalCobalt;
     }
 
     throw new Error('Unable to extract media from this URL. Please verify the URL is public and supported.');
