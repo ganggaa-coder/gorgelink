@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { api } from "@/lib/downr"; // Sesuaikan path import dengan struktur Anda
+import { api } from "@/lib/downr";
 
 export const dynamic = 'force-dynamic';
 
