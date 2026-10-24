@@ -1,25 +1,44 @@
 {
-  "name": "GorgeLink",
+  "id": "/",
+  "name": "GorgeLink - Media Downloader",
   "short_name": "GorgeLink",
-  "theme_color": "#E2E8F0",
-  "background_color": "#E2E8F0",
-  "display": "standalone",
-  "orientation": "portrait",
-  "scope": "/",
+  "description": "Download videos, audio, and covers from YouTube, TikTok, Instagram, and more.",
   "start_url": "/",
-  "description": "Download videos and media from multiple platforms.",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#070d18",
+  "theme_color": "#0284c7",
   "icons": [
     {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
       "src": "/icon-192.svg",
-      "sizes": "192x192 any",
+      "sizes": "192x192",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "/icon-512.svg",
-      "sizes": "512x512 any",
+      "sizes": "512x512",
       "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ]
 }
