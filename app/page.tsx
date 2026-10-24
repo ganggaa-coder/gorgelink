@@ -24,6 +24,7 @@ import {
   Layers,
   ShieldCheck,
   Radio,
+  Activity,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { usePWAInstall } from './hooks/usePWAInstall';
@@ -190,9 +191,17 @@ const COMPACT_PLATFORMS = [
   { name: 'SoundCloud', placeholder: 'https://soundcloud.com/...' },
 ];
 
+const LOADING_STEPS = [
+  'Menghubungi endpoint Multi-CDN & bypass rate-limit...',
+  'Mengekstrak track audio (320kbps MP3) & video resolusi tinggi (1080p/4K)...',
+  'Mengurai album foto slide & cover artwork...',
+  'Menyiapkan tautan unduhan langsung tanpa watermark...',
+];
+
 export default function App() {
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingStep, setLoadingStep] = useState(0);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -202,6 +211,18 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'extractor' | 'history'>('extractor');
   const [showCommunityModal, setShowCommunityModal] = useState(false);
   const [showInstallModal, setShowInstallModal] = useState(false);
+
+  // Cycling loading step messages
+  useEffect(() => {
+    if (!loading) {
+      setLoadingStep(0);
+      return;
+    }
+    const interval = setInterval(() => {
+      setLoadingStep((prev) => (prev + 1) % LOADING_STEPS.length);
+    }, 1300);
+    return () => clearInterval(interval);
+  }, [loading]);
 
   // PWA Install Hook
   const { isInstallable, isInstalled, install } = usePWAInstall();
@@ -377,7 +398,7 @@ export default function App() {
         >
           <div className="w-9 h-9 rounded-xl overflow-hidden border border-[var(--border-subtle)] shadow-xs shrink-0 bg-[var(--bg-canvas)] transition-transform group-hover:scale-105">
             <img
-              src="/assets/aistudio/GorgeLink_Chibi_Tech_Splash_ea446690.png"
+              src="/assets/icon.png"
               alt="GorgeLink Mascot"
               className="w-full h-full object-cover"
             />
@@ -476,7 +497,7 @@ export default function App() {
         <section className="w-full rounded-2xl overflow-hidden border border-[var(--border-subtle)] shadow-xs relative bg-[var(--bg-surface)]">
           <div className="w-full aspect-[21/9] sm:aspect-[16/7] relative overflow-hidden bg-[var(--bg-canvas)]">
             <img
-              src="/assets/aistudio/GorgeLink_dengan_Maskot_Anime_Ceria_463d8075.png"
+              src="/assets/banner.png"
               alt="GorgeLink Anime Mascot Banner"
               className="w-full h-full object-cover object-center"
             />
@@ -542,11 +563,32 @@ export default function App() {
                 className="h-12 px-6 bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-[var(--accent-text)] text-sm font-bold rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 whitespace-nowrap shrink-0 shadow-xs cursor-pointer"
               >
                 {loading ? (
-                  <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  <div className="flex items-center gap-2">
+                    <span className="flex items-end gap-0.5 h-4">
+                      <motion.span
+                        animate={{ scaleY: [0.3, 1, 0.4] }}
+                        transition={{ repeat: Infinity, duration: 0.6, ease: 'easeInOut' }}
+                        className="w-1 h-3.5 bg-current rounded-full origin-bottom"
+                      />
+                      <motion.span
+                        animate={{ scaleY: [0.8, 0.3, 1] }}
+                        transition={{ repeat: Infinity, duration: 0.5, ease: 'easeInOut' }}
+                        className="w-1 h-3.5 bg-current rounded-full origin-bottom"
+                      />
+                      <motion.span
+                        animate={{ scaleY: [0.4, 0.9, 0.3] }}
+                        transition={{ repeat: Infinity, duration: 0.7, ease: 'easeInOut' }}
+                        className="w-1 h-3.5 bg-current rounded-full origin-bottom"
+                      />
+                    </span>
+                    <span>Memproses...</span>
+                  </div>
                 ) : (
-                  <Download className="w-4 h-4" />
+                  <>
+                    <Download className="w-4 h-4" />
+                    <span>Extract Media</span>
+                  </>
                 )}
-                <span>{loading ? 'Memproses...' : 'Extract Media'}</span>
               </button>
             </form>
 
@@ -586,19 +628,129 @@ export default function App() {
           </div>
         </section>
 
-        {/* Loading Spinner */}
+        {/* Modern Cyber Media Ingestion Loading State */}
         <AnimatePresence>
           {loading && (
             <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="flex flex-col items-center justify-center py-6 gap-2"
+              initial={{ opacity: 0, y: 12, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -10, scale: 0.98 }}
+              transition={{ duration: 0.25 }}
+              className="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-6 sm:p-8 shadow-lg relative overflow-hidden flex flex-col items-center justify-center text-center gap-6"
             >
-              <div className="w-7 h-7 rounded-full border-2 border-[var(--border-subtle)] border-t-[var(--accent-primary)] animate-spin" />
-              <p className="text-xs text-[var(--text-secondary)]">
-                Mengambil resolusi video, audio, dan foto slide...
-              </p>
+              {/* Animated Ambient Cyber Gradient Beam */}
+              <div className="absolute inset-0 bg-gradient-to-r from-sky-500/5 via-cyan-400/10 to-blue-500/5 pointer-events-none" />
+              <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-[var(--accent-primary)] to-transparent animate-pulse" />
+
+              {/* Central Holographic Tech Scanner with Mascot Icon */}
+              <div className="relative flex items-center justify-center">
+                {/* Concentric Pulse Waves */}
+                <motion.div
+                  animate={{ scale: [1, 1.35, 1.7], opacity: [0.5, 0.2, 0] }}
+                  transition={{ repeat: Infinity, duration: 2, ease: 'easeOut' }}
+                  className="absolute inset-0 rounded-full border border-[var(--accent-primary)] pointer-events-none"
+                />
+                <motion.div
+                  animate={{ scale: [1, 1.2, 1.45], opacity: [0.6, 0.3, 0] }}
+                  transition={{ repeat: Infinity, duration: 2, delay: 0.6, ease: 'easeOut' }}
+                  className="absolute inset-0 rounded-full border border-cyan-400/40 pointer-events-none"
+                />
+
+                {/* Rotating Cyber Reticle Ring */}
+                <motion.div
+                  animate={{ rotate: 360 }}
+                  transition={{ repeat: Infinity, duration: 8, ease: 'linear' }}
+                  className="w-20 h-20 rounded-full border-2 border-dashed border-[var(--accent-primary)]/40 p-1 flex items-center justify-center"
+                >
+                  <motion.div
+                    animate={{ rotate: -360 }}
+                    transition={{ repeat: Infinity, duration: 12, ease: 'linear' }}
+                    className="w-full h-full rounded-full border border-[var(--accent-primary)]/20"
+                  />
+                </motion.div>
+
+                {/* Central Glow Core with Mascot Icon */}
+                <div className="absolute w-14 h-14 rounded-full overflow-hidden border-2 border-[var(--accent-primary)] bg-[var(--bg-canvas)] shadow-[0_0_20px_rgba(56,189,248,0.35)] flex items-center justify-center">
+                  <img
+                    src="/assets/icon.png"
+                    alt="GorgeLink"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+              </div>
+
+              {/* Dynamic Soundwave / Frequency Stream Bars */}
+              <div className="flex items-center gap-1.5 h-8">
+                {[0.4, 0.8, 1.2, 0.6, 1.0, 0.7, 1.1, 0.5, 0.9, 0.3].map((_, i) => (
+                  <motion.div
+                    key={i}
+                    animate={{
+                      scaleY: [0.25, 1, 0.4, 0.85, 0.3],
+                      opacity: [0.6, 1, 0.7, 1, 0.6],
+                    }}
+                    transition={{
+                      repeat: Infinity,
+                      duration: 0.9 + (i % 3) * 0.2,
+                      delay: i * 0.08,
+                      ease: 'easeInOut',
+                    }}
+                    className="w-1.5 sm:w-2 bg-gradient-to-t from-[var(--accent-primary)] to-cyan-300 rounded-full origin-bottom h-7 shadow-xs"
+                  />
+                ))}
+              </div>
+
+              {/* Step Status Text & Ticker */}
+              <div className="flex flex-col items-center gap-2 max-w-lg z-10">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--accent-primary)]/10 border border-[var(--accent-primary)]/30 text-[var(--accent-primary)] text-xs font-semibold tracking-wide">
+                  <Activity className="w-3.5 h-3.5 animate-pulse" />
+                  <span>GORGELINK MEDIA STREAM ENGINE</span>
+                </div>
+
+                <AnimatePresence mode="wait">
+                  <motion.p
+                    key={loadingStep}
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -6 }}
+                    transition={{ duration: 0.2 }}
+                    className="text-sm sm:text-base font-semibold text-[var(--text-primary)]"
+                  >
+                    {LOADING_STEPS[loadingStep]}
+                  </motion.p>
+                </AnimatePresence>
+
+                <p className="text-xs text-[var(--text-muted)]">
+                  Mendeteksi stream audio, video 4K/1080p, dan slide foto resolusi penuh...
+                </p>
+              </div>
+
+              {/* Cyber Progress Track Bar */}
+              <div className="w-full max-w-md h-1.5 bg-[var(--bg-canvas)] rounded-full overflow-hidden border border-[var(--border-subtle)] relative">
+                <motion.div
+                  animate={{
+                    x: ['-100%', '100%'],
+                  }}
+                  transition={{
+                    repeat: Infinity,
+                    duration: 1.5,
+                    ease: 'easeInOut',
+                  }}
+                  className="w-1/2 h-full bg-gradient-to-r from-transparent via-[var(--accent-primary)] to-transparent"
+                />
+              </div>
+
+              {/* Bottom Telemetry Badges */}
+              <div className="flex flex-wrap items-center justify-center gap-2 text-[11px] font-mono text-[var(--text-secondary)]">
+                <span className="px-2 py-0.5 rounded-md bg-[var(--bg-canvas)] border border-[var(--border-subtle)]">
+                  LATENCY: LOW
+                </span>
+                <span className="px-2 py-0.5 rounded-md bg-[var(--bg-canvas)] border border-[var(--border-subtle)]">
+                  CODEC: DIRECT STREAM
+                </span>
+                <span className="px-2 py-0.5 rounded-md bg-[var(--bg-canvas)] border border-[var(--border-subtle)]">
+                  SSL: ENCRYPTED
+                </span>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
@@ -894,7 +1046,7 @@ export default function App() {
           <div className="flex items-center gap-2.5">
             <div className="w-6 h-6 rounded-lg overflow-hidden border border-[var(--border-subtle)] shadow-2xs shrink-0">
               <img
-                src="/assets/aistudio/GorgeLink_Chibi_Tech_Splash_ea446690.png"
+                src="/assets/icon.png"
                 alt="GorgeLink Chibi"
                 className="w-full h-full object-cover"
               />
@@ -962,7 +1114,7 @@ export default function App() {
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-12 h-12 rounded-xl overflow-hidden border border-[var(--border-subtle)] shadow-xs shrink-0">
                   <img
-                    src="/assets/aistudio/GorgeLink_Chibi_Tech_Splash_ea446690.png"
+                    src="/assets/icon.png"
                     alt="GorgeLink Icon"
                     className="w-full h-full object-cover"
                   />
