@@ -1,28 +1,27 @@
-import type {Metadata, Viewport} from 'next';
-import { Inter } from 'next/font/google';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
-const inter = Inter({ subsets: ['latin'] });
-
 export const metadata: Metadata = {
-  title: 'GorgeLink',
-  description: 'Download videos and media from multiple platforms quickly.',
+  title: 'GorgeLink - MEDIA Downloader',
+  description: 'All in one media downloader for TikTok, Instagram, YouTube, Facebook, and more.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
-    statusBarStyle: "default",
-    title: "GorgeLink"
-  }
+    statusBarStyle: 'default',
+    title: 'GorgeLink',
+  },
 };
 
 export const viewport: Viewport = {
-  themeColor: '#E2E8F0',
+  themeColor: '#2563EB',
 };
 
-export default function RootLayout({children}: {children: React.ReactNode}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className={`${inter.className} bg-[#E2E8F0] font-sans text-[#020817] min-h-screen antialiased`} suppressHydrationWarning>{children}</body>
+      <body className="bg-[#FAFAFA] dark:bg-[#090D16] text-[#0F172A] dark:text-[#F8FAFC] min-h-screen antialiased">
+        {children}
+      </body>
     </html>
   );
 }
