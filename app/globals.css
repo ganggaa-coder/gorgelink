@@ -6,47 +6,40 @@
 :root {
   font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   color-scheme: light;
-  --bg-canvas: #f8fafc;
+  --bg-canvas: #f4f9fd;
   --bg-surface: #ffffff;
-  --bg-surface-subtle: #f1f5f9;
-  --border-subtle: #e2e8f0;
-  --text-primary: #0f172a;
-  --text-secondary: #64748b;
-  --text-muted: #94a3b8;
+  --bg-surface-subtle: #eaf3fb;
+  --border-subtle: #d2e5f5;
+  --text-primary: #0a1829;
+  --text-secondary: #4a637d;
+  --text-muted: #8298b0;
+  /* GorgeLink Mascot Vibrant Cyan-Blue Accent */
+  --accent-primary: #0284c7;
+  --accent-hover: #0369a1;
+  --accent-text: #ffffff;
+  --accent-glow: rgba(2, 132, 199, 0.15);
 }
 
 :root.dark {
   color-scheme: dark;
-  --bg-canvas: #0b0f19;
-  --bg-surface: #131b2e;
-  --bg-surface-subtle: #0f172a;
-  --border-subtle: #1e293b;
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --bg-canvas: #070d18;
+  --bg-surface: #0e1728;
+  --bg-surface-subtle: #091220;
+  --border-subtle: #192a45;
+  --text-primary: #f0f7ff;
+  --text-secondary: #90a5c0;
+  --text-muted: #576d88;
+  /* GorgeLink Mascot Electric Sky-Cyan Accent */
+  --accent-primary: #38bdf8;
+  --accent-hover: #0ea5e9;
+  --accent-text: #070d18;
+  --accent-glow: rgba(56, 189, 248, 0.2);
 }
 
 body {
   background-color: var(--bg-canvas);
   color: var(--text-primary);
   transition: background-color 0.2s ease, color 0.2s ease;
-}
-
-.theme-canvas {
-  background-color: var(--bg-canvas);
-}
-
-.theme-surface {
-  background-color: var(--bg-surface);
-  border-color: var(--border-subtle);
-}
-
-.theme-surface-subtle {
-  background-color: var(--bg-surface-subtle);
-}
-
-.theme-border {
-  border-color: var(--border-subtle);
 }
 
 .font-mono-numbers {
