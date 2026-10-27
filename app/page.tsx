@@ -27,7 +27,7 @@ import {
   Activity,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { usePWAInstall } from './hooks/usePWAInstall';
+import { usePWAInstall } from '../hooks/usePWAInstall';
 import Image from './components/Image';
 
 export interface MediaLink {
