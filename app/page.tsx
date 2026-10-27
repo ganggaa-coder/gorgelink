@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
 import {
   Download,
   Link as LinkIcon,
@@ -26,11 +26,11 @@ import {
   Radio,
   Activity,
 } from 'lucide-react';
-import Image from 'next/image';
 import { motion, AnimatePresence } from 'motion/react';
-import { usePWAInstall } from '../hooks/usePWAInstall';
+import { usePWAInstall } from './hooks/usePWAInstall';
+import Image from './components/Image';
 
-interface MediaLink {
+export interface MediaLink {
   label: string;
   url: string;
   type?: 'video' | 'audio' | 'image' | 'source' | 'other';
@@ -39,7 +39,7 @@ interface MediaLink {
   size?: string;
 }
 
-interface ExtractionHistoryItem {
+export interface ExtractionHistoryItem {
   id: string;
   url: string;
   title: string;
@@ -49,7 +49,8 @@ interface ExtractionHistoryItem {
   platform?: string;
 }
 
-function isUrl(str: string) {
+function isUrl(str: string): boolean {
+  if (typeof str !== 'string' || !str.startsWith('http')) return false;
   try {
     new URL(str);
     return true;
@@ -68,14 +69,15 @@ function gatherLinks(obj: any, prefix = ''): { label: string; url: string; rawTy
   }
 
   if (Array.isArray(obj)) {
-    obj.forEach((item) => {
-      links.push(...gatherLinks(item, prefix));
-    });
+    for (let i = 0; i < obj.length; i++) {
+      links.push(...gatherLinks(obj[i], prefix));
+    }
   } else if (typeof obj === 'object') {
     if (typeof obj.url === 'string' && isUrl(obj.url)) {
       let customLabel = prefix;
-      if (obj.label) customLabel = obj.label;
-      else {
+      if (obj.label) {
+        customLabel = obj.label;
+      } else {
         if (obj.type) customLabel += ` [${obj.type}]`;
         if (obj.quality) customLabel += ` - ${obj.quality}`;
         if (obj.extension) customLabel += ` (.${obj.extension})`;
@@ -88,31 +90,42 @@ function gatherLinks(obj: any, prefix = ''): { label: string; url: string; rawTy
       });
     }
 
-    Object.entries(obj).forEach(([key, value]) => {
-      if (key === 'url' && typeof value === 'string' && isUrl(value)) return;
+    const entries = Object.entries(obj);
+    for (let i = 0; i < entries.length; i++) {
+      const [key, value] = entries[i];
+      if (key === 'url' && typeof value === 'string' && isUrl(value)) continue;
 
       if (typeof value === 'string' && isUrl(value)) {
         const cleanKey = key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
         links.push({ label: `${prefix} ${cleanKey}`.trim(), url: value });
-      } else if (typeof value === 'object') {
+      } else if (typeof value === 'object' && value !== null) {
         const nextPrefix = prefix ? prefix : key.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
         links.push(...gatherLinks(value, nextPrefix));
       }
-    });
+    }
   }
   return links;
 }
+
+const TYPE_PRIORITY: Record<string, number> = {
+  video: 1,
+  audio: 2,
+  image: 3,
+  other: 4,
+  source: 5,
+};
 
 function formatAndSortLinks(rawLinks: { label: string; url: string; rawType?: string }[]): MediaLink[] {
   const seenUrls = new Set<string>();
   const results: MediaLink[] = [];
 
-  rawLinks.forEach((link) => {
-    if (seenUrls.has(link.url)) return;
+  for (let i = 0; i < rawLinks.length; i++) {
+    const link = rawLinks[i];
+    if (seenUrls.has(link.url)) continue;
     seenUrls.add(link.url);
 
-    const url = link.url.toLowerCase();
-    const label = link.label.toLowerCase();
+    const urlLower = link.url.toLowerCase();
+    const labelLower = link.label.toLowerCase();
 
     let type: MediaLink['type'] = 'other';
     let quality = '';
@@ -120,47 +133,47 @@ function formatAndSortLinks(rawLinks: { label: string; url: string; rawType?: st
 
     if (
       link.rawType === 'audio' ||
-      label.includes('audio') ||
-      label.includes('mp3') ||
-      label.includes('m4a') ||
-      url.includes('.mp3') ||
-      url.includes('.m4a') ||
-      label.includes('kbps')
+      labelLower.includes('audio') ||
+      labelLower.includes('mp3') ||
+      labelLower.includes('m4a') ||
+      urlLower.includes('.mp3') ||
+      urlLower.includes('.m4a') ||
+      labelLower.includes('kbps')
     ) {
       type = 'audio';
       extension = 'mp3';
-      if (label.includes('320')) quality = '320 kbps';
-      else if (label.includes('256')) quality = '256 kbps';
-      else if (label.includes('128')) quality = '128 kbps';
+      if (labelLower.includes('320')) quality = '320 kbps';
+      else if (labelLower.includes('256')) quality = '256 kbps';
+      else if (labelLower.includes('128')) quality = '128 kbps';
     } else if (
       link.rawType === 'image' ||
-      label.includes('thumbnail') ||
-      label.includes('cover') ||
-      label.includes('photo') ||
-      label.includes('slide') ||
-      label.includes('artwork') ||
-      url.includes('.jpg') ||
-      url.includes('.jpeg') ||
-      url.includes('.png') ||
-      url.includes('.webp')
+      labelLower.includes('thumbnail') ||
+      labelLower.includes('cover') ||
+      labelLower.includes('photo') ||
+      labelLower.includes('slide') ||
+      labelLower.includes('artwork') ||
+      urlLower.includes('.jpg') ||
+      urlLower.includes('.jpeg') ||
+      urlLower.includes('.png') ||
+      urlLower.includes('.webp')
     ) {
       type = 'image';
-      extension = url.includes('.webp') ? 'webp' : url.includes('.png') ? 'png' : 'jpg';
-      if (label.includes('1080') || label.includes('maxres')) quality = '1080p';
-      else if (label.includes('480') || label.includes('hq')) quality = '480p';
+      extension = urlLower.includes('.webp') ? 'webp' : urlLower.includes('.png') ? 'png' : 'jpg';
+      if (labelLower.includes('1080') || labelLower.includes('maxres')) quality = '1080p';
+      else if (labelLower.includes('480') || labelLower.includes('hq')) quality = '480p';
     } else if (
       link.rawType === 'video' ||
-      label.includes('video') ||
-      label.includes('mp4') ||
-      url.includes('.mp4') ||
-      label.includes('hd')
+      labelLower.includes('video') ||
+      labelLower.includes('mp4') ||
+      urlLower.includes('.mp4') ||
+      labelLower.includes('hd')
     ) {
       type = 'video';
       extension = 'mp4';
-      if (label.includes('1080')) quality = '1080p';
-      else if (label.includes('720')) quality = '720p';
-      else if (label.includes('480')) quality = '480p';
-      else if (label.includes('360')) quality = '360p';
+      if (labelLower.includes('1080')) quality = '1080p';
+      else if (labelLower.includes('720')) quality = '720p';
+      else if (labelLower.includes('480')) quality = '480p';
+      else if (labelLower.includes('360')) quality = '360p';
     }
 
     results.push({
@@ -170,17 +183,15 @@ function formatAndSortLinks(rawLinks: { label: string; url: string; rawType?: st
       quality,
       extension,
     });
-  });
+  }
 
   return results.sort((a, b) => {
-    const order: Record<string, number> = { video: 1, audio: 2, image: 3, other: 4, source: 5 };
-    const diff = (order[a.type || 'other'] || 4) - (order[b.type || 'other'] || 4);
+    const diff = (TYPE_PRIORITY[a.type || 'other'] || 4) - (TYPE_PRIORITY[b.type || 'other'] || 4);
     if (diff !== 0) return diff;
     return b.label.localeCompare(a.label);
   });
 }
 
-// Compact supported platforms list to keep layout tidy
 const COMPACT_PLATFORMS = [
   { name: 'YouTube', placeholder: 'https://www.youtube.com/watch?v=...' },
   { name: 'TikTok', placeholder: 'https://vt.tiktok.com/...' },
@@ -190,19 +201,338 @@ const COMPACT_PLATFORMS = [
   { name: 'Twitter/X', placeholder: 'https://x.com/.../status/...' },
   { name: 'Facebook', placeholder: 'https://fb.watch/...' },
   { name: 'SoundCloud', placeholder: 'https://soundcloud.com/...' },
-];
+] as const;
 
 const LOADING_STEPS = [
   'Menghubungi endpoint Multi-CDN & bypass rate-limit...',
   'Mengekstrak track audio (320kbps MP3) & video resolusi tinggi (1080p/4K)...',
   'Mengurai album foto slide & cover artwork...',
   'Menyiapkan tautan unduhan langsung tanpa watermark...',
-];
+] as const;
+
+// Isolated Loading Scanner Component prevents root re-renders every interval tick
+const CyberLoadingScanner = memo(function CyberLoadingScanner() {
+  const [loadingStep, setLoadingStep] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setLoadingStep((prev) => (prev + 1) % LOADING_STEPS.length);
+    }, 1300);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -10, scale: 0.98 }}
+      transition={{ duration: 0.25 }}
+      className="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-6 sm:p-8 shadow-lg relative overflow-hidden flex flex-col items-center justify-center text-center gap-6"
+    >
+      <div className="absolute inset-0 bg-gradient-to-r from-sky-500/5 via-cyan-400/10 to-blue-500/5 pointer-events-none" />
+      <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-[var(--accent-primary)] to-transparent animate-pulse" />
+
+      <div className="relative flex items-center justify-center">
+        <motion.div
+          animate={{ scale: [1, 1.35, 1.7], opacity: [0.5, 0.2, 0] }}
+          transition={{ repeat: Infinity, duration: 2, ease: 'easeOut' }}
+          className="absolute inset-0 rounded-full border border-[var(--accent-primary)] pointer-events-none"
+        />
+        <motion.div
+          animate={{ scale: [1, 1.2, 1.45], opacity: [0.6, 0.3, 0] }}
+          transition={{ repeat: Infinity, duration: 2, delay: 0.6, ease: 'easeOut' }}
+          className="absolute inset-0 rounded-full border border-cyan-400/40 pointer-events-none"
+        />
+
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ repeat: Infinity, duration: 8, ease: 'linear' }}
+          className="w-20 h-20 rounded-full border-2 border-dashed border-[var(--accent-primary)]/40 p-1 flex items-center justify-center"
+        >
+          <motion.div
+            animate={{ rotate: -360 }}
+            transition={{ repeat: Infinity, duration: 12, ease: 'linear' }}
+            className="w-full h-full rounded-full border border-[var(--accent-primary)]/20"
+          />
+        </motion.div>
+
+        <div className="absolute w-14 h-14 rounded-full overflow-hidden border-2 border-[var(--accent-primary)] bg-[var(--bg-canvas)] shadow-[0_0_20px_rgba(56,189,248,0.35)] flex items-center justify-center">
+          <Image
+            src="/icon.png"
+            alt="GorgeLink"
+            width={56}
+            height={56}
+            className="w-full h-full object-cover"
+          />
+        </div>
+      </div>
+
+      <div className="flex items-center gap-1.5 h-8">
+        {[0.4, 0.8, 1.2, 0.6, 1.0, 0.7, 1.1, 0.5, 0.9, 0.3].map((_, i) => (
+          <motion.div
+            key={i}
+            animate={{
+              scaleY: [0.25, 1, 0.4, 0.85, 0.3],
+              opacity: [0.6, 1, 0.7, 1, 0.6],
+            }}
+            transition={{
+              repeat: Infinity,
+              duration: 0.9 + (i % 3) * 0.2,
+              delay: i * 0.08,
+              ease: 'easeInOut',
+            }}
+            className="w-1.5 sm:w-2 bg-gradient-to-t from-[var(--accent-primary)] to-cyan-300 rounded-full origin-bottom h-7 shadow-xs"
+          />
+        ))}
+      </div>
+
+      <div className="flex flex-col items-center gap-2 max-w-lg z-10">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--accent-primary)]/10 border border-[var(--accent-primary)]/30 text-[var(--accent-primary)] text-xs font-semibold tracking-wide">
+          <Activity className="w-3.5 h-3.5 animate-pulse" />
+          <span>GORGELINK MEDIA STREAM ENGINE</span>
+        </div>
+
+        <AnimatePresence mode="wait">
+          <motion.p
+            key={loadingStep}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.2 }}
+            className="text-sm sm:text-base font-semibold text-[var(--text-primary)]"
+          >
+            {LOADING_STEPS[loadingStep]}
+          </motion.p>
+        </AnimatePresence>
+
+        <p className="text-xs text-[var(--text-muted)]">
+          Mendeteksi stream audio, video 4K/1080p, dan slide foto resolusi penuh...
+        </p>
+      </div>
+
+      <div className="w-full max-w-md h-1.5 bg-[var(--bg-canvas)] rounded-full overflow-hidden border border-[var(--border-subtle)] relative">
+        <motion.div
+          animate={{ x: ['-100%', '100%'] }}
+          transition={{ repeat: Infinity, duration: 1.5, ease: 'easeInOut' }}
+          className="w-1/2 h-full bg-gradient-to-r from-transparent via-[var(--accent-primary)] to-transparent"
+        />
+      </div>
+
+      <div className="flex flex-wrap items-center justify-center gap-2 text-[11px] font-mono text-[var(--text-secondary)]">
+        <span className="px-2 py-0.5 rounded-md bg-[var(--bg-canvas)] border border-[var(--border-subtle)]">
+          LATENCY: LOW
+        </span>
+        <span className="px-2 py-0.5 rounded-md bg-[var(--bg-canvas)] border border-[var(--border-subtle)]">
+          CODEC: DIRECT STREAM
+        </span>
+        <span className="px-2 py-0.5 rounded-md bg-[var(--bg-canvas)] border border-[var(--border-subtle)]">
+          SSL: ENCRYPTED
+        </span>
+      </div>
+    </motion.div>
+  );
+});
+
+// Memoized Media Link Item avoids re-rendering every row when one link is copied
+interface MediaLinkRowProps {
+  link: MediaLink;
+  index: number;
+  mediaTitle: string;
+  isCopied: boolean;
+  onCopy: (url: string, index: number) => void;
+}
+
+const MediaLinkRow = memo(function MediaLinkRow({
+  link,
+  index,
+  mediaTitle,
+  isCopied,
+  onCopy,
+}: MediaLinkRowProps) {
+  const isVideo = link.type === 'video';
+  const isAudio = link.type === 'audio';
+  const isImage = link.type === 'image';
+
+  const safeTitle = useMemo(
+    () => mediaTitle.slice(0, 36).replace(/[^a-zA-Z0-9_-]/g, '_'),
+    [mediaTitle]
+  );
+  const filename = useMemo(() => {
+    return `${safeTitle}${isAudio ? '.mp3' : isImage ? (link.extension ? `.${link.extension}` : '.jpg') : '.mp4'}`;
+  }, [safeTitle, isAudio, isImage, link.extension]);
+
+  const proxyDownloadUrl = useMemo(() => {
+    return `/api/stream?url=${encodeURIComponent(link.url)}&filename=${encodeURIComponent(filename)}`;
+  }, [link.url, filename]);
+
+  return (
+    <div className="px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-[var(--bg-surface-subtle)] transition-colors">
+      <div className="flex items-center gap-3">
+        <div className="w-8 h-8 rounded-lg bg-[var(--bg-surface-subtle)] text-[var(--text-secondary)] flex items-center justify-center shrink-0 border border-[var(--border-subtle)]">
+          {isVideo ? (
+            <Video className="w-4 h-4 text-[var(--accent-primary)]" />
+          ) : isAudio ? (
+            <Music className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+          ) : isImage ? (
+            <ImageIcon className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+          ) : (
+            <LinkIcon className="w-4 h-4" />
+          )}
+        </div>
+        <div>
+          <p className="text-sm font-semibold text-[var(--text-primary)]">{link.label}</p>
+          <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+            <span>{link.extension ? link.extension.toUpperCase() : 'STREAM'}</span>
+            {link.quality && (
+              <>
+                <span aria-hidden="true">·</span>
+                <span className="font-mono-numbers font-semibold text-[var(--accent-primary)]">
+                  {link.quality}
+                </span>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 shrink-0">
+        <a
+          href={proxyDownloadUrl}
+          download={filename}
+          className="px-3.5 py-1.5 text-xs font-bold text-[var(--accent-text)] bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0 shadow-xs"
+        >
+          <Download className="w-3.5 h-3.5" />
+          <span>Download</span>
+        </a>
+
+        <a
+          href={link.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="p-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--border-subtle)] rounded-lg transition-colors"
+          title="Buka langsung tautan"
+        >
+          <ExternalLink className="w-4 h-4" />
+        </a>
+
+        <button
+          onClick={() => onCopy(link.url, index)}
+          className="p-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--border-subtle)] rounded-lg transition-colors cursor-pointer"
+          title="Salin tautan stream"
+          type="button"
+        >
+          {isCopied ? (
+            <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+          ) : (
+            <Copy className="w-4 h-4" />
+          )}
+        </button>
+      </div>
+    </div>
+  );
+});
+
+// Memoized History Row Component
+interface HistoryRowProps {
+  item: ExtractionHistoryItem;
+  onSelect: (url: string) => void;
+}
+
+const HistoryRow = memo(function HistoryRow({ item, onSelect }: HistoryRowProps) {
+  const formattedTime = useMemo(() => {
+    return new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }, [item.timestamp]);
+
+  return (
+    <div
+      onClick={() => onSelect(item.url)}
+      className="py-3 px-2 flex items-center justify-between gap-4 hover:bg-[var(--bg-surface-subtle)] rounded-xl cursor-pointer group transition-colors"
+    >
+      <div className="flex items-center gap-3 overflow-hidden">
+        {item.thumbnail ? (
+          <img
+            src={item.thumbnail}
+            alt="thumb"
+            referrerPolicy="no-referrer"
+            className="w-10 h-10 object-cover rounded-lg shrink-0 bg-[var(--bg-canvas)] border border-[var(--border-subtle)]"
+          />
+        ) : (
+          <div className="w-10 h-10 rounded-lg bg-[var(--bg-canvas)] text-[var(--text-secondary)] flex items-center justify-center shrink-0 border border-[var(--border-subtle)]">
+            <Video className="w-4 h-4" />
+          </div>
+        )}
+        <div className="overflow-hidden">
+          <p className="text-sm font-semibold text-[var(--text-primary)] truncate group-hover:text-[var(--accent-primary)] transition-colors">
+            {item.title}
+          </p>
+          <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
+            <span>{item.platform || 'Media'}</span>
+            <span aria-hidden="true">·</span>
+            <span className="font-mono-numbers">{formattedTime}</span>
+          </div>
+        </div>
+      </div>
+
+      <ArrowRight className="w-4 h-4 text-[var(--text-muted)] group-hover:text-[var(--accent-primary)] transition-colors shrink-0" />
+    </div>
+  );
+});
+
+// Memoized Static Section
+const UnderTheHoodSection = memo(function UnderTheHoodSection() {
+  return (
+    <section id="hood" className="pt-4 border-t border-[var(--border-subtle)]">
+      <div className="mb-6">
+        <h2 className="text-lg font-bold text-[var(--text-primary)]">Under the Hood</h2>
+        <p className="text-xs text-[var(--text-secondary)] mt-0.5">
+          Robust multi-engine pipeline engineered for longevity and uptime.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="p-5 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl shadow-xs">
+          <div className="w-8 h-8 rounded-xl bg-[var(--bg-surface-subtle)] text-[var(--accent-primary)] flex items-center justify-center mb-3 border border-[var(--border-subtle)]">
+            <Layers className="w-4 h-4" />
+          </div>
+          <h3 className="text-sm font-bold text-[var(--text-primary)] mb-1.5">
+            Multi-CDN Fallback Pool
+          </h3>
+          <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+            Connects to dynamic CDN pools with AES-128-CBC cipher resolution for YouTube and multi-origin parsers for TikTok.
+          </p>
+        </div>
+
+        <div className="p-5 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl shadow-xs">
+          <div className="w-8 h-8 rounded-xl bg-[var(--bg-surface-subtle)] text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-3 border border-[var(--border-subtle)]">
+            <ShieldCheck className="w-4 h-4" />
+          </div>
+          <h3 className="text-sm font-bold text-[var(--text-primary)] mb-1.5">
+            LRU Stream Cache
+          </h3>
+          <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+            20-minute in-memory caching eliminates redundant external scraper calls, completely bypassing third-party rate limits.
+          </p>
+        </div>
+
+        <div className="p-5 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl shadow-xs">
+          <div className="w-8 h-8 rounded-xl bg-[var(--bg-surface-subtle)] text-purple-600 dark:text-purple-400 flex items-center justify-center mb-3 border border-[var(--border-subtle)]">
+            <Radio className="w-4 h-4" />
+          </div>
+          <h3 className="text-sm font-bold text-[var(--text-primary)] mb-1.5">
+            Browser Stream Attachment
+          </h3>
+          <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+            Direct media streams pass through a local HTTP pipeline setting attachment headers for seamless 1-click downloads.
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+});
 
 export default function App() {
   const [url, setUrl] = useState('');
   const [loading, setLoading] = useState(false);
-  const [loadingStep, setLoadingStep] = useState(0);
   const [result, setResult] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -212,18 +542,6 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'extractor' | 'history'>('extractor');
   const [showCommunityModal, setShowCommunityModal] = useState(false);
   const [showInstallModal, setShowInstallModal] = useState(false);
-
-  // Cycling loading step messages
-  useEffect(() => {
-    if (!loading) {
-      setLoadingStep(0);
-      return;
-    }
-    const interval = setInterval(() => {
-      setLoadingStep((prev) => (prev + 1) % LOADING_STEPS.length);
-    }, 1300);
-    return () => clearInterval(interval);
-  }, [loading]);
 
   // PWA Install Hook
   const { isInstallable, isInstalled, install } = usePWAInstall();
@@ -253,9 +571,9 @@ export default function App() {
     }
   }, [darkMode]);
 
-  const toggleTheme = () => {
+  const toggleTheme = useCallback(() => {
     setDarkMode((prev) => !prev);
-  };
+  }, []);
 
   useEffect(() => {
     try {
@@ -272,16 +590,15 @@ export default function App() {
     }
   }, []);
 
-  // Direct Install in Navbar
-  const handleDirectInstall = async () => {
+  const handleDirectInstall = useCallback(async () => {
     if (isInstallable) {
       const success = await install();
       if (success) return;
     }
     setShowInstallModal(true);
-  };
+  }, [isInstallable, install]);
 
-  const handlePasteClipboard = async () => {
+  const handlePasteClipboard = useCallback(async () => {
     try {
       const text = await navigator.clipboard.readText();
       if (text) {
@@ -291,18 +608,19 @@ export default function App() {
       const input = document.getElementById('media-url-input') as HTMLInputElement;
       if (input) input.focus();
     }
-  };
+  }, []);
 
-  const handleDownload = async (e?: React.FormEvent) => {
+  const handleDownload = useCallback(async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!url.trim()) return;
+    const cleanUrl = url.trim();
+    if (!cleanUrl) return;
 
     setLoading(true);
     setError(null);
     setResult(null);
 
     try {
-      const res = await fetch(`/api/download?url=${encodeURIComponent(url.trim())}`, {
+      const res = await fetch(`/api/download?url=${encodeURIComponent(cleanUrl)}`, {
         method: 'GET',
       });
       const data = await res.json();
@@ -317,7 +635,7 @@ export default function App() {
           data.Result?.title ||
           data.Result?.desc ||
           data.Result?.caption ||
-          url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 48);
+          cleanUrl.replace(/^https?:\/\/(www\.)?/, '').slice(0, 48);
 
         const coverImg =
           data.Result?.cover ||
@@ -326,7 +644,7 @@ export default function App() {
           extracted.find((l) => l.url.includes('.jpg') || l.url.includes('.png') || l.url.includes('.webp'))?.url;
 
         let detectedPlatform = 'Universal';
-        const lowerUrl = url.toLowerCase();
+        const lowerUrl = cleanUrl.toLowerCase();
         if (lowerUrl.includes('youtube') || lowerUrl.includes('youtu.be')) detectedPlatform = 'YouTube';
         else if (lowerUrl.includes('tiktok')) detectedPlatform = 'TikTok';
         else if (lowerUrl.includes('spotify') || lowerUrl.includes('open.spotify')) detectedPlatform = 'Spotify';
@@ -338,7 +656,7 @@ export default function App() {
 
         const newHistoryItem: ExtractionHistoryItem = {
           id: Date.now().toString(),
-          url: url.trim(),
+          url: cleanUrl,
           title: String(title),
           timestamp: Date.now(),
           thumbnail: coverImg,
@@ -346,62 +664,88 @@ export default function App() {
           platform: detectedPlatform,
         };
 
-        const updatedHistory = [newHistoryItem, ...history.filter((h) => h.url !== url.trim())].slice(0, 15);
-        setHistory(updatedHistory);
-        localStorage.setItem('gorgelink_history', JSON.stringify(updatedHistory));
+        setHistory((prevHistory) => {
+          const updated = [newHistoryItem, ...prevHistory.filter((h) => h.url !== cleanUrl)].slice(0, 15);
+          try {
+            localStorage.setItem('gorgelink_history', JSON.stringify(updated));
+          } catch (e) {
+            console.error(e);
+          }
+          return updated;
+        });
       }
     } catch (err: any) {
       setError(err.message || 'Terjadi gangguan jaringan saat memproses link.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [url]);
 
-  const clearHistory = () => {
+  const clearHistory = useCallback(() => {
     setHistory([]);
     localStorage.removeItem('gorgelink_history');
-  };
+  }, []);
 
-  const handleCopyPayload = () => {
+  const handleCopyPayload = useCallback(() => {
     if (result) {
       navigator.clipboard.writeText(JSON.stringify(result, null, 2));
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
-  };
+  }, [result]);
 
-  const handleCopyLink = (linkUrl: string, index: number) => {
+  const handleCopyLink = useCallback((linkUrl: string, index: number) => {
     navigator.clipboard.writeText(linkUrl);
     setCopiedLinkIndex(index);
     setTimeout(() => setCopiedLinkIndex(null), 2000);
-  };
+  }, []);
 
-  const rawLinks = result ? gatherLinks(result) : [];
-  const links = formatAndSortLinks(rawLinks);
+  const handleHistorySelect = useCallback((itemUrl: string) => {
+    setUrl(itemUrl);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
 
-  const mediaTitle = result?.title || result?.desc || result?.caption || 'Media Asset';
-  const mediaAuthor = result?.author?.nickname || result?.author?.unique_id || null;
-  const mediaDuration = result?.duration ? String(result.duration) : null;
-  const mediaCover =
-    result?.cover ||
-    result?.origin_cover ||
-    result?.thumbnail ||
-    links.find((l) => l.type === 'image')?.url;
+  // Performance Optimization: Memoize heavy link extraction and parsing
+  const rawLinks = useMemo(() => (result ? gatherLinks(result) : []), [result]);
+  const links = useMemo(() => formatAndSortLinks(rawLinks), [rawLinks]);
+
+  const mediaTitle = useMemo(() => {
+    return result?.title || result?.desc || result?.caption || 'Media Asset';
+  }, [result]);
+
+  const mediaAuthor = useMemo(() => {
+    return result?.author?.nickname || result?.author?.unique_id || null;
+  }, [result]);
+
+  const mediaDuration = useMemo(() => {
+    return result?.duration ? String(result.duration) : null;
+  }, [result]);
+
+  const mediaCover = useMemo(() => {
+    return (
+      result?.cover ||
+      result?.origin_cover ||
+      result?.thumbnail ||
+      links.find((l) => l.type === 'image')?.url
+    );
+  }, [result, links]);
 
   return (
     <div className="flex flex-col min-h-screen w-full font-sans transition-colors duration-200">
       {/* Top Bar: Mascot Avatar Icon + Brand + Navigation + Direct Install APK + Theme Switcher */}
       <header className="h-16 sticky top-0 z-40 bg-[var(--bg-surface)] border-b border-[var(--border-subtle)] px-4 sm:px-8 flex items-center justify-between gap-4 sm:gap-6 transition-colors shadow-xs">
-        {/* Zone 1: Mascot Avatar Logo + Wordmark */}
         <a
           href="/"
           className="text-lg font-bold tracking-tight text-[var(--text-primary)] whitespace-nowrap shrink-0 flex items-center gap-2.5 group"
         >
           <div className="w-9 h-9 rounded-xl overflow-hidden border border-[var(--border-subtle)] shadow-xs shrink-0 bg-[var(--bg-canvas)] transition-transform group-hover:scale-105">
-            <img
+            <Image
               src="/icon.png"
               alt="GorgeLink Mascot"
+              width={36}
+              height={36}
               className="w-full h-full object-cover"
+              priority
             />
           </div>
           <span className="font-extrabold tracking-tight">
@@ -409,7 +753,6 @@ export default function App() {
           </span>
         </a>
 
-        {/* Zone 2: Clean Navigation Links */}
         <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-[var(--text-secondary)]">
           <a
             href="#extractor"
@@ -429,10 +772,11 @@ export default function App() {
           {history.length > 0 && (
             <button
               onClick={() => {
-                setActiveTab(activeTab === 'history' ? 'extractor' : 'history');
-                setShowHistory(!showHistory);
+                setActiveTab((prev) => (prev === 'history' ? 'extractor' : 'history'));
+                setShowHistory((prev) => !prev);
               }}
               className="hover:text-[var(--text-primary)] transition-colors whitespace-nowrap shrink-0 flex items-center gap-1.5 cursor-pointer"
+              type="button"
             >
               <span>Recent History</span>
               <span className="text-xs font-mono font-mono-numbers opacity-80 bg-[var(--bg-surface-subtle)] px-1.5 py-0.5 rounded-full border border-[var(--border-subtle)]">
@@ -442,9 +786,7 @@ export default function App() {
           )}
         </nav>
 
-        {/* Zone 3: Direct Install APK + Theme Toggle + Community */}
         <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-          {/* Direct Install APK Button ONLY in navbar */}
           {!isInstalled ? (
             <button
               onClick={handleDirectInstall}
@@ -462,7 +804,6 @@ export default function App() {
             </div>
           )}
 
-          {/* Theme Toggle Button */}
           <button
             onClick={toggleTheme}
             type="button"
@@ -485,6 +826,7 @@ export default function App() {
 
           <button
             onClick={() => setShowCommunityModal(true)}
+            type="button"
             className="hidden sm:inline-flex px-3 py-1.5 text-xs font-medium text-[var(--text-primary)] bg-[var(--bg-surface-subtle)] hover:bg-[var(--border-subtle)] rounded-xl transition-colors whitespace-nowrap shrink-0 border border-[var(--border-subtle)] cursor-pointer"
           >
             Community
@@ -497,27 +839,27 @@ export default function App() {
         {/* Mascot Banner Hero Card */}
         <section className="w-full rounded-2xl overflow-hidden border border-[var(--border-subtle)] shadow-xs relative bg-[var(--bg-surface)]">
           <div className="w-full aspect-[21/9] sm:aspect-[16/7] relative overflow-hidden bg-[var(--bg-canvas)]">
-            <img
+            <Image
               src="/banner.png"
               alt="GorgeLink Anime Mascot Banner"
+              width={1200}
+              height={525}
               className="w-full h-full object-cover object-center"
+              priority
             />
           </div>
         </section>
 
         {/* Hero Headline & Subtitle */}
         <section className="flex flex-col items-center text-center max-w-3xl mx-auto -mt-2">
-          {/* Teks Atas Judul */}
           <div className="flex items-center gap-2 text-xs font-semibold text-[var(--accent-primary)] mb-2 tracking-wide uppercase">
             <span>Fast · Free · No Watermark · High Quality</span>
           </div>
 
-          {/* Judul: GorgeLink Downloader */}
           <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight text-[var(--text-primary)] mb-2.5 text-balance">
             GorgeLink Downloader
           </h1>
 
-          {/* Teks Bawah Judul */}
           <p className="text-sm sm:text-base text-[var(--text-secondary)] mb-6 max-w-2xl leading-relaxed">
             Unduh video resolusi tinggi, audio MP3, foto slide, dan cover dari YouTube, TikTok, Instagram, Spotify, Suno, dan platform lainnya.
           </p>
@@ -610,7 +952,7 @@ export default function App() {
               )}
             </AnimatePresence>
 
-            {/* Supported ringkas di bawah extract media agar tidak panjang */}
+            {/* Compact Supported Platforms */}
             <div className="mt-3 pt-3 border-t border-[var(--border-subtle)] flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-xs text-[var(--text-secondary)]">
               <span className="font-semibold text-[var(--text-muted)]">Supported:</span>
               {COMPACT_PLATFORMS.map((p, idx) => (
@@ -631,129 +973,7 @@ export default function App() {
 
         {/* Modern Cyber Media Ingestion Loading State */}
         <AnimatePresence>
-          {loading && (
-            <motion.div
-              initial={{ opacity: 0, y: 12, scale: 0.98 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: -10, scale: 0.98 }}
-              transition={{ duration: 0.25 }}
-              className="w-full bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl p-6 sm:p-8 shadow-lg relative overflow-hidden flex flex-col items-center justify-center text-center gap-6"
-            >
-              {/* Animated Ambient Cyber Gradient Beam */}
-              <div className="absolute inset-0 bg-gradient-to-r from-sky-500/5 via-cyan-400/10 to-blue-500/5 pointer-events-none" />
-              <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-[var(--accent-primary)] to-transparent animate-pulse" />
-
-              {/* Central Holographic Tech Scanner with Mascot Icon */}
-              <div className="relative flex items-center justify-center">
-                {/* Concentric Pulse Waves */}
-                <motion.div
-                  animate={{ scale: [1, 1.35, 1.7], opacity: [0.5, 0.2, 0] }}
-                  transition={{ repeat: Infinity, duration: 2, ease: 'easeOut' }}
-                  className="absolute inset-0 rounded-full border border-[var(--accent-primary)] pointer-events-none"
-                />
-                <motion.div
-                  animate={{ scale: [1, 1.2, 1.45], opacity: [0.6, 0.3, 0] }}
-                  transition={{ repeat: Infinity, duration: 2, delay: 0.6, ease: 'easeOut' }}
-                  className="absolute inset-0 rounded-full border border-cyan-400/40 pointer-events-none"
-                />
-
-                {/* Rotating Cyber Reticle Ring */}
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ repeat: Infinity, duration: 8, ease: 'linear' }}
-                  className="w-20 h-20 rounded-full border-2 border-dashed border-[var(--accent-primary)]/40 p-1 flex items-center justify-center"
-                >
-                  <motion.div
-                    animate={{ rotate: -360 }}
-                    transition={{ repeat: Infinity, duration: 12, ease: 'linear' }}
-                    className="w-full h-full rounded-full border border-[var(--accent-primary)]/20"
-                  />
-                </motion.div>
-
-                {/* Central Glow Core with Mascot Icon */}
-                <div className="absolute w-14 h-14 rounded-full overflow-hidden border-2 border-[var(--accent-primary)] bg-[var(--bg-canvas)] shadow-[0_0_20px_rgba(56,189,248,0.35)] flex items-center justify-center">
-                  <img
-                    src="/icon.png"
-                    alt="GorgeLink"
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-              </div>
-
-              {/* Dynamic Soundwave / Frequency Stream Bars */}
-              <div className="flex items-center gap-1.5 h-8">
-                {[0.4, 0.8, 1.2, 0.6, 1.0, 0.7, 1.1, 0.5, 0.9, 0.3].map((_, i) => (
-                  <motion.div
-                    key={i}
-                    animate={{
-                      scaleY: [0.25, 1, 0.4, 0.85, 0.3],
-                      opacity: [0.6, 1, 0.7, 1, 0.6],
-                    }}
-                    transition={{
-                      repeat: Infinity,
-                      duration: 0.9 + (i % 3) * 0.2,
-                      delay: i * 0.08,
-                      ease: 'easeInOut',
-                    }}
-                    className="w-1.5 sm:w-2 bg-gradient-to-t from-[var(--accent-primary)] to-cyan-300 rounded-full origin-bottom h-7 shadow-xs"
-                  />
-                ))}
-              </div>
-
-              {/* Step Status Text & Ticker */}
-              <div className="flex flex-col items-center gap-2 max-w-lg z-10">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[var(--accent-primary)]/10 border border-[var(--accent-primary)]/30 text-[var(--accent-primary)] text-xs font-semibold tracking-wide">
-                  <Activity className="w-3.5 h-3.5 animate-pulse" />
-                  <span>GORGELINK MEDIA STREAM ENGINE</span>
-                </div>
-
-                <AnimatePresence mode="wait">
-                  <motion.p
-                    key={loadingStep}
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -6 }}
-                    transition={{ duration: 0.2 }}
-                    className="text-sm sm:text-base font-semibold text-[var(--text-primary)]"
-                  >
-                    {LOADING_STEPS[loadingStep]}
-                  </motion.p>
-                </AnimatePresence>
-
-                <p className="text-xs text-[var(--text-muted)]">
-                  Mendeteksi stream audio, video 4K/1080p, dan slide foto resolusi penuh...
-                </p>
-              </div>
-
-              {/* Cyber Progress Track Bar */}
-              <div className="w-full max-w-md h-1.5 bg-[var(--bg-canvas)] rounded-full overflow-hidden border border-[var(--border-subtle)] relative">
-                <motion.div
-                  animate={{
-                    x: ['-100%', '100%'],
-                  }}
-                  transition={{
-                    repeat: Infinity,
-                    duration: 1.5,
-                    ease: 'easeInOut',
-                  }}
-                  className="w-1/2 h-full bg-gradient-to-r from-transparent via-[var(--accent-primary)] to-transparent"
-                />
-              </div>
-
-              {/* Bottom Telemetry Badges */}
-              <div className="flex flex-wrap items-center justify-center gap-2 text-[11px] font-mono text-[var(--text-secondary)]">
-                <span className="px-2 py-0.5 rounded-md bg-[var(--bg-canvas)] border border-[var(--border-subtle)]">
-                  LATENCY: LOW
-                </span>
-                <span className="px-2 py-0.5 rounded-md bg-[var(--bg-canvas)] border border-[var(--border-subtle)]">
-                  CODEC: DIRECT STREAM
-                </span>
-                <span className="px-2 py-0.5 rounded-md bg-[var(--bg-canvas)] border border-[var(--border-subtle)]">
-                  SSL: ENCRYPTED
-                </span>
-              </div>
-            </motion.div>
-          )}
+          {loading && <CyberLoadingScanner key="scanner" />}
         </AnimatePresence>
 
         {/* Results Showcase: High-Density Structured Formats Table */}
@@ -828,86 +1048,16 @@ export default function App() {
                 </div>
 
                 <div className="divide-y divide-[var(--border-subtle)] border border-[var(--border-subtle)] rounded-xl overflow-hidden">
-                  {links.map((link, idx) => {
-                    const isVideo = link.type === 'video';
-                    const isAudio = link.type === 'audio';
-                    const isImage = link.type === 'image';
-
-                    const safeTitle = mediaTitle.slice(0, 36).replace(/[^a-zA-Z0-9_-]/g, '_');
-                    const filename = `${safeTitle}${isAudio ? '.mp3' : isImage ? (link.extension ? `.${link.extension}` : '.jpg') : '.mp4'}`;
-                    const proxyDownloadUrl = `/api/stream?url=${encodeURIComponent(link.url)}&filename=${encodeURIComponent(filename)}`;
-
-                    return (
-                      <div
-                        key={idx}
-                        className="px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-[var(--bg-surface-subtle)] transition-colors"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-[var(--bg-surface-subtle)] text-[var(--text-secondary)] flex items-center justify-center shrink-0 border border-[var(--border-subtle)]">
-                            {isVideo ? (
-                              <Video className="w-4 h-4 text-[var(--accent-primary)]" />
-                            ) : isAudio ? (
-                              <Music className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                            ) : isImage ? (
-                              <ImageIcon className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                            ) : (
-                              <LinkIcon className="w-4 h-4" />
-                            )}
-                          </div>
-                          <div>
-                            <p className="text-sm font-semibold text-[var(--text-primary)]">
-                              {link.label}
-                            </p>
-                            <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
-                              <span>{link.extension ? link.extension.toUpperCase() : 'STREAM'}</span>
-                              {link.quality && (
-                                <>
-                                  <span aria-hidden="true">·</span>
-                                  <span className="font-mono-numbers font-semibold text-[var(--accent-primary)]">
-                                    {link.quality}
-                                  </span>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Action buttons */}
-                        <div className="flex items-center gap-2 shrink-0">
-                          <a
-                            href={proxyDownloadUrl}
-                            download={filename}
-                            className="px-3.5 py-1.5 text-xs font-bold text-[var(--accent-text)] bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] rounded-xl transition-all flex items-center gap-1.5 whitespace-nowrap shrink-0 shadow-xs"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                            <span>Download</span>
-                          </a>
-
-                          <a
-                            href={link.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="p-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--border-subtle)] rounded-lg transition-colors"
-                            title="Buka langsung tautan"
-                          >
-                            <ExternalLink className="w-4 h-4" />
-                          </a>
-
-                          <button
-                            onClick={() => handleCopyLink(link.url, idx)}
-                            className="p-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--border-subtle)] rounded-lg transition-colors cursor-pointer"
-                            title="Salin tautan stream"
-                          >
-                            {copiedLinkIndex === idx ? (
-                              <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                            ) : (
-                              <Copy className="w-4 h-4" />
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
+                  {links.map((link, idx) => (
+                    <MediaLinkRow
+                      key={`${link.url}-${idx}`}
+                      link={link}
+                      index={idx}
+                      mediaTitle={mediaTitle}
+                      isCopied={copiedLinkIndex === idx}
+                      onCopy={handleCopyLink}
+                    />
+                  ))}
                 </div>
               </div>
 
@@ -920,6 +1070,7 @@ export default function App() {
                 <div className="p-4 bg-[#070D18] text-xs font-mono text-neutral-200 whitespace-pre-wrap overflow-x-auto max-h-60 relative">
                   <button
                     onClick={handleCopyPayload}
+                    type="button"
                     className="absolute top-3 right-3 px-2 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded-lg text-xs transition-colors flex items-center gap-1 cursor-pointer"
                   >
                     {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
@@ -942,6 +1093,7 @@ export default function App() {
               </div>
               <button
                 onClick={clearHistory}
+                type="button"
                 className="text-xs text-red-600 dark:text-red-400 hover:underline flex items-center gap-1 cursor-pointer font-medium"
               >
                 <Trash2 className="w-3.5 h-3.5" /> Hapus Riwayat
@@ -950,95 +1102,18 @@ export default function App() {
 
             <div className="divide-y divide-[var(--border-subtle)]">
               {history.map((item) => (
-                <div
+                <HistoryRow
                   key={item.id}
-                  onClick={() => {
-                    setUrl(item.url);
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
-                  className="py-3 px-2 flex items-center justify-between gap-4 hover:bg-[var(--bg-surface-subtle)] rounded-xl cursor-pointer group transition-colors"
-                >
-                  <div className="flex items-center gap-3 overflow-hidden">
-                    {item.thumbnail ? (
-                      <img
-                        src={item.thumbnail}
-                        alt="thumb"
-                        referrerPolicy="no-referrer"
-                        className="w-10 h-10 object-cover rounded-lg shrink-0 bg-[var(--bg-canvas)] border border-[var(--border-subtle)]"
-                      />
-                    ) : (
-                      <div className="w-10 h-10 rounded-lg bg-[var(--bg-canvas)] text-[var(--text-secondary)] flex items-center justify-center shrink-0 border border-[var(--border-subtle)]">
-                        <Video className="w-4 h-4" />
-                      </div>
-                    )}
-                    <div className="overflow-hidden">
-                      <p className="text-sm font-semibold text-[var(--text-primary)] truncate group-hover:text-[var(--accent-primary)] transition-colors">
-                        {item.title}
-                      </p>
-                      <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
-                        <span>{item.platform || 'Media'}</span>
-                        <span aria-hidden="true">·</span>
-                        <span className="font-mono-numbers">
-                          {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <ArrowRight className="w-4 h-4 text-[var(--text-muted)] group-hover:text-[var(--accent-primary)] transition-colors shrink-0" />
-                </div>
+                  item={item}
+                  onSelect={handleHistorySelect}
+                />
               ))}
             </div>
           </section>
         )}
 
-        {/* Extraction Matrix: Kembalikan seperti sebelumnya (Under the Hood Architecture 3 Cards) */}
-        <section id="hood" className="pt-4 border-t border-[var(--border-subtle)]">
-          <div className="mb-6">
-            <h2 className="text-lg font-bold text-[var(--text-primary)]">Under the Hood</h2>
-            <p className="text-xs text-[var(--text-secondary)] mt-0.5">
-              Robust multi-engine pipeline engineered for longevity and uptime.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="p-5 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl shadow-xs">
-              <div className="w-8 h-8 rounded-xl bg-[var(--bg-surface-subtle)] text-[var(--accent-primary)] flex items-center justify-center mb-3 border border-[var(--border-subtle)]">
-                <Layers className="w-4 h-4" />
-              </div>
-              <h3 className="text-sm font-bold text-[var(--text-primary)] mb-1.5">
-                Multi-CDN Fallback Pool
-              </h3>
-              <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                Connects to dynamic CDN pools with AES-128-CBC cipher resolution for YouTube and multi-origin parsers for TikTok.
-              </p>
-            </div>
-
-            <div className="p-5 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl shadow-xs">
-              <div className="w-8 h-8 rounded-xl bg-[var(--bg-surface-subtle)] text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-3 border border-[var(--border-subtle)]">
-                <ShieldCheck className="w-4 h-4" />
-              </div>
-              <h3 className="text-sm font-bold text-[var(--text-primary)] mb-1.5">
-                LRU Stream Cache
-              </h3>
-              <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                20-minute in-memory caching eliminates redundant external scraper calls, completely bypassing third-party rate limits.
-              </p>
-            </div>
-
-            <div className="p-5 bg-[var(--bg-surface)] border border-[var(--border-subtle)] rounded-2xl shadow-xs">
-              <div className="w-8 h-8 rounded-xl bg-[var(--bg-surface-subtle)] text-purple-600 dark:text-purple-400 flex items-center justify-center mb-3 border border-[var(--border-subtle)]">
-                <Radio className="w-4 h-4" />
-              </div>
-              <h3 className="text-sm font-bold text-[var(--text-primary)] mb-1.5">
-                Browser Stream Attachment
-              </h3>
-              <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
-                Direct media streams pass through a local HTTP pipeline setting attachment headers for seamless 1-click downloads.
-              </p>
-            </div>
-          </div>
-        </section>
+        {/* Extraction Matrix: Under the Hood Architecture 3 Cards */}
+        <UnderTheHoodSection />
       </main>
 
       {/* Footer: Clean branded layout with mascot */}
@@ -1046,9 +1121,11 @@ export default function App() {
         <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[var(--text-secondary)]">
           <div className="flex items-center gap-2.5">
             <div className="w-6 h-6 rounded-lg overflow-hidden border border-[var(--border-subtle)] shadow-2xs shrink-0">
-              <img
+              <Image
                 src="/icon.png"
                 alt="GorgeLink Chibi"
+                width={24}
+                height={24}
                 className="w-full h-full object-cover"
               />
             </div>
@@ -1060,6 +1137,7 @@ export default function App() {
           <div className="flex items-center gap-4">
             <button
               onClick={handleDirectInstall}
+              type="button"
               className="hover:text-[var(--text-primary)] transition-colors flex items-center gap-1 cursor-pointer font-medium"
             >
               <Smartphone className="w-3.5 h-3.5 text-[var(--accent-primary)]" />
@@ -1106,6 +1184,7 @@ export default function App() {
             >
               <button
                 onClick={() => setShowInstallModal(false)}
+                type="button"
                 className="absolute top-4 right-4 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
                 aria-label="Close"
               >
@@ -1114,9 +1193,11 @@ export default function App() {
 
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-12 h-12 rounded-xl overflow-hidden border border-[var(--border-subtle)] shadow-xs shrink-0">
-                  <img
+                  <Image
                     src="/icon.png"
                     alt="GorgeLink Icon"
+                    width={48}
+                    height={48}
                     className="w-full h-full object-cover"
                   />
                 </div>
@@ -1135,6 +1216,7 @@ export default function App() {
                       await install();
                       setShowInstallModal(false);
                     }}
+                    type="button"
                     className="w-full py-2.5 bg-[var(--accent-primary)] hover:bg-[var(--accent-hover)] text-[var(--accent-text)] text-sm font-bold rounded-xl flex items-center justify-center gap-2 shadow-xs transition-colors cursor-pointer"
                   >
                     <Download className="w-4 h-4" />
@@ -1144,7 +1226,6 @@ export default function App() {
               )}
 
               <div className="space-y-3 text-xs text-[var(--text-secondary)]">
-                {/* Android Guide */}
                 <div className="p-3.5 bg-[var(--bg-canvas)] rounded-xl border border-[var(--border-subtle)]">
                   <div className="flex items-center gap-2 font-semibold text-[var(--text-primary)] mb-1.5">
                     <Smartphone className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
@@ -1157,7 +1238,6 @@ export default function App() {
                   </ol>
                 </div>
 
-                {/* iOS Safari Guide */}
                 <div className="p-3.5 bg-[var(--bg-canvas)] rounded-xl border border-[var(--border-subtle)]">
                   <div className="flex items-center gap-2 font-semibold text-[var(--text-primary)] mb-1.5">
                     <Share className="w-4 h-4 text-[var(--accent-primary)]" />
@@ -1170,7 +1250,6 @@ export default function App() {
                   </ol>
                 </div>
 
-                {/* PC / Desktop Guide */}
                 <div className="p-3.5 bg-[var(--bg-canvas)] rounded-xl border border-[var(--border-subtle)]">
                   <div className="flex items-center gap-2 font-semibold text-[var(--text-primary)] mb-1.5">
                     <Laptop className="w-4 h-4 text-purple-600 dark:text-purple-400" />
@@ -1185,6 +1264,7 @@ export default function App() {
               <div className="mt-5 flex gap-2">
                 <button
                   onClick={() => setShowInstallModal(false)}
+                  type="button"
                   className="w-full py-2 bg-[var(--bg-surface-subtle)] hover:bg-[var(--border-subtle)] text-[var(--text-primary)] text-xs font-semibold rounded-xl transition-colors cursor-pointer border border-[var(--border-subtle)]"
                 >
                   Tutup
@@ -1212,6 +1292,7 @@ export default function App() {
             >
               <button
                 onClick={() => setShowCommunityModal(false)}
+                type="button"
                 className="absolute top-4 right-4 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
                 aria-label="Close"
               >
@@ -1233,6 +1314,7 @@ export default function App() {
                 </a>
                 <button
                   onClick={() => setShowCommunityModal(false)}
+                  type="button"
                   className="h-10 bg-[var(--bg-surface-subtle)] text-[var(--text-secondary)] text-xs font-medium rounded-xl hover:bg-[var(--border-subtle)] transition-colors border border-[var(--border-subtle)] cursor-pointer"
                 >
                   Tutup
